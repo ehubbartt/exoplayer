@@ -1,4 +1,5 @@
 package com.example.exoplayer;
+
 import com.google.android.exoplayer2.C;
 import android.net.Uri;
 import android.text.TextUtils;
@@ -20,12 +21,16 @@ import com.google.android.exoplayer2.util.Util;
 
 public final class CustomMediaDrmCallback implements com.google.android.exoplayer2.drm.MediaDrmCallback {
 
-
     private final HttpDataSource.Factory dataSourceFactory;
     @Nullable private final String defaultLicenseUrl;
     private final boolean forceDefaultLicenseUrl;
     private final Map<String, String> keyRequestProperties;
 
+    /**
+     * Basic constructor used if you only have a key and a data source
+     * @param defaultLicenseUrl license url String
+     * @param dataSourceFactory data source factory
+     */
     public CustomMediaDrmCallback(
             @Nullable String defaultLicenseUrl, HttpDataSource.Factory dataSourceFactory) {
         this(defaultLicenseUrl, /* forceDefaultLicenseUrl= */ false, dataSourceFactory);
@@ -42,17 +47,27 @@ public final class CustomMediaDrmCallback implements com.google.android.exoplaye
         this.keyRequestProperties = new HashMap<>();
     }
 
+    //unused for this project but would be used if a licence was not required. Included since you cannot
+    //instantiate an abstract class
     @Override
     public byte[] executeProvisionRequest(UUID uuid, ProvisionRequest request) throws MediaDrmCallbackException {
         return new byte[0];
     }
 
+    /**
+     * execute a key request given licensing for drm media
+     * @param uuid a unique id (one from exoplayers android uuids)
+     * @param request contains information regarding the request
+     * @return an input stream based on data provided from the helper function
+     * @throws MediaDrmCallbackException if the url is empty
+     */
     @Override
     public byte[] executeKeyRequest(UUID uuid, KeyRequest request) throws MediaDrmCallbackException {
-        String url = request.getLicenseServerUrl();
-        if (forceDefaultLicenseUrl || TextUtils.isEmpty(url)) {
+        String url = request.getLicenseServerUrl(); // only used if passed a keyrequest
+        if (forceDefaultLicenseUrl || TextUtils.isEmpty(url)) { //otherwise default license is forced when creating a drmcallback object
             url = defaultLicenseUrl;
         }
+
         if (TextUtils.isEmpty(url)) { //if license is missing throw error
             throw new MediaDrmCallbackException(
                     new DataSpec.Builder().setUri(Uri.EMPTY).build(),
@@ -62,6 +77,7 @@ public final class CustomMediaDrmCallback implements com.google.android.exoplaye
                     /* cause= */ new IllegalStateException("No license URL"));
         }
         Map<String, String> requestProperties = new HashMap<>();
+
         // Add standard request properties for supported schemes.
         String contentType =
                 C.WIDEVINE_UUID.equals(uuid)
@@ -76,9 +92,20 @@ public final class CustomMediaDrmCallback implements com.google.android.exoplaye
         synchronized (keyRequestProperties) {
             requestProperties.putAll(keyRequestProperties);
         }
+        //returns the helper function that basically just creates an inputStream with the data
         return executePost(dataSourceFactory, url, request.getData(), requestProperties);
     }
 
+    /**
+     * helper function for executeKeyRequest()
+     * creates a data spec and a data source that is used to return an input stream
+     * @param dataSourceFactory
+     * @param url license url
+     * @param httpBody http body headers
+     * @param requestProperties http request properties
+     * @return input stream create from the data
+     * @throws MediaDrmCallbackException
+     */
     private static byte[] executePost(
             HttpDataSource.Factory dataSourceFactory,
             String url,
@@ -86,6 +113,7 @@ public final class CustomMediaDrmCallback implements com.google.android.exoplaye
             Map<String, String> requestProperties)
             throws MediaDrmCallbackException {
         StatsDataSource dataSource = new StatsDataSource(dataSourceFactory.createDataSource());
+
         DataSpec dataSpec =
                 new DataSpec.Builder()
                         .setUri(url)
@@ -95,17 +123,14 @@ public final class CustomMediaDrmCallback implements com.google.android.exoplaye
                         .setFlags(DataSpec.FLAG_ALLOW_GZIP)
                         .build();
         DataSpec originalDataSpec = dataSpec;
+
         try {
             while (true) {
                 DataSourceInputStream inputStream = new DataSourceInputStream(dataSource, dataSpec);
                 try {
                     return Util.toByteArray(inputStream);
                 } catch (InvalidResponseCodeException e) {
-//                    @Nullable String redirectUrl = getRedirectUrl(e, manualRedirectCount);
-//                    if (redirectUrl == null) {
-//                        throw e;
-//                    }
-//                    dataSpec = dataSpec.buildUpon().setUri(redirectUrl).build();
+//               util.toByteArray() requires these exceptions be checked but are not required for the project
                 } finally {
                     Util.closeQuietly(inputStream);
                 }
